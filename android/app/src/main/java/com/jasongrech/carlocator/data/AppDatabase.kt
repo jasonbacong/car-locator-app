@@ -5,10 +5,11 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [ParkingSpot::class, SafeZone::class], version = 2, exportSchema = false)
+@Database(entities = [ParkingSpot::class, SafeZone::class, CarDevice::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun parkingSpotDao(): ParkingSpotDao
     abstract fun safeZoneDao(): SafeZoneDao
+    abstract fun carDeviceDao(): CarDeviceDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null

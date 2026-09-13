@@ -17,16 +17,21 @@ data class HomeLocation(val lat: Double, val lng: Double)
 class PrefsRepository(private val context: Context) {
 
     private object Keys {
+        // Superseded by the CarDevice table (multiple cars) — kept only so
+        // CarLocatorApp can migrate a single previously-selected car into it once.
         val CAR_DEVICE_ADDRESS = stringPreferencesKey("car_device_address")
         val CAR_DEVICE_NAME = stringPreferencesKey("car_device_name")
         val HOME_LAT = doublePreferencesKey("home_lat")
         val HOME_LNG = doublePreferencesKey("home_lng")
         val HOME_RADIUS_M = floatPreferencesKey("home_radius_m")
         val FEATURE_ENABLED = booleanPreferencesKey("feature_enabled")
+        val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
     }
 
-    val carDeviceAddress: Flow<String?> = context.dataStore.data.map { it[Keys.CAR_DEVICE_ADDRESS] }
-    val carDeviceName: Flow<String?> = context.dataStore.data.map { it[Keys.CAR_DEVICE_NAME] }
+    val legacyCarDeviceAddress: Flow<String?> = context.dataStore.data.map { it[Keys.CAR_DEVICE_ADDRESS] }
+    val legacyCarDeviceName: Flow<String?> = context.dataStore.data.map { it[Keys.CAR_DEVICE_NAME] }
+
+    val hasSeenOnboarding: Flow<Boolean> = context.dataStore.data.map { it[Keys.HAS_SEEN_ONBOARDING] ?: false }
 
     val homeLocation: Flow<HomeLocation?> = context.dataStore.data.map { prefs ->
         val lat = prefs[Keys.HOME_LAT]
@@ -37,11 +42,15 @@ class PrefsRepository(private val context: Context) {
     val homeRadiusMeters: Flow<Float> = context.dataStore.data.map { it[Keys.HOME_RADIUS_M] ?: 150f }
     val featureEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.FEATURE_ENABLED] ?: true }
 
-    suspend fun setCarDevice(address: String, name: String?) {
+    suspend fun clearLegacyCarDevice() {
         context.dataStore.edit {
-            it[Keys.CAR_DEVICE_ADDRESS] = address
-            it[Keys.CAR_DEVICE_NAME] = name ?: address
+            it.remove(Keys.CAR_DEVICE_ADDRESS)
+            it.remove(Keys.CAR_DEVICE_NAME)
         }
+    }
+
+    suspend fun setHasSeenOnboarding(seen: Boolean) {
+        context.dataStore.edit { it[Keys.HAS_SEEN_ONBOARDING] = seen }
     }
 
     suspend fun setHomeLocation(lat: Double, lng: Double) {

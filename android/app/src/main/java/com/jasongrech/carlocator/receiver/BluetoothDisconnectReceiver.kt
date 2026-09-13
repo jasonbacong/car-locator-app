@@ -49,8 +49,9 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 val enabled = app.prefs.featureEnabled.first()
-                val savedAddress = app.prefs.carDeviceAddress.first()
-                if (enabled && savedAddress != null && savedAddress.equals(address, ignoreCase = true)) {
+                val savedDevices = app.db.carDeviceDao().getAllOnce()
+                val isKnownCar = savedDevices.any { it.address.equals(address, ignoreCase = true) }
+                if (enabled && isKnownCar) {
                     ContextCompat.startForegroundService(
                         context, Intent(context, ParkingSaveService::class.java)
                     )

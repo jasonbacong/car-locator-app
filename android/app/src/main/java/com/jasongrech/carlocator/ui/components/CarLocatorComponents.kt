@@ -1,5 +1,6 @@
 package com.jasongrech.carlocator.ui.components
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -26,7 +27,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -162,6 +165,48 @@ fun SectionEyebrow(text: String, modifier: Modifier = Modifier) {
         color = TextSecondary,
         modifier = modifier
     )
+}
+
+/**
+ * A section whose body can be tapped closed — keeps settings that are usually set
+ * once and forgotten out of the way, without hiding that they exist or their
+ * current state (a one-line summary stays visible even while collapsed).
+ */
+@Composable
+fun CollapsibleSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    summary: String? = null,
+    initiallyExpanded: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var expanded by remember { mutableStateOf(initiallyExpanded) }
+
+    Column(modifier = modifier.animateContentSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SectionEyebrow(title)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!expanded && summary != null) {
+                    Text(summary, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                }
+                Text(
+                    if (expanded) "▴" else "▾",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+        }
+        if (expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+        }
+    }
 }
 
 /** Small state dot — green means ready, amber means "needs a tap." Function, not decoration. */

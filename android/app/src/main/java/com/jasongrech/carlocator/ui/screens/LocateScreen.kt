@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +41,7 @@ import com.jasongrech.carlocator.ui.components.TactileButton
 import com.jasongrech.carlocator.ui.theme.Accent
 import com.jasongrech.carlocator.ui.theme.Bg
 import com.jasongrech.carlocator.ui.theme.Mono
+import com.jasongrech.carlocator.ui.theme.Success
 import com.jasongrech.carlocator.ui.theme.TextMuted
 import com.jasongrech.carlocator.ui.theme.TextPrimary
 import com.jasongrech.carlocator.ui.theme.TextSecondary
@@ -51,10 +53,15 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 
+/** Close enough that more GPS polling just burns battery for no real benefit. */
+private const val ARRIVAL_THRESHOLD_METERS = 15f
+
 /**
  * Distance + a rotating arrow pointing at the saved spot — for parking garages where
  * Maps/Waze themselves lose GPS accuracy between concrete levels. Uses the device's
- * rotation sensor plus continuous location updates while this screen is on screen.
+ * rotation sensor plus continuous location updates while this screen is on screen —
+ * and stops those updates automatically once you're basically standing at the car,
+ * rather than polling GPS the whole time this screen happens to be open.
  */
 @SuppressLint("MissingPermission")
 @Composable
@@ -63,6 +70,29 @@ fun LocateScreen(spot: ParkingSpot, onBack: () -> Unit) {
 
     var currentLocation by remember { mutableStateOf<Location?>(null) }
     var azimuthDegrees by remember { mutableStateOf(0f) }
+    var isTracking by remember { mutableStateOf(true) }
+
+    val fusedClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    val locationCallback = remember {
+        object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                currentLocation = result.lastLocation
+            }
+        }
+    }
+
+    fun startTracking() {
+        if (LocationUtils.hasLocationPermission(context)) {
+            val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L).build()
+            fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+        }
+        isTracking = true
+    }
+
+    fun stopTracking() {
+        fusedClient.removeLocationUpdates(locationCallback)
+        isTracking = false
+    }
 
     DisposableEffect(spot.id) {
         val sensorManager = context.getSystemService(android.content.Context.SENSOR_SERVICE) as SensorManager
@@ -82,16 +112,7 @@ fun LocateScreen(spot: ParkingSpot, onBack: () -> Unit) {
             sensorManager.registerListener(sensorListener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
         }
 
-        val fusedClient = LocationServices.getFusedLocationProviderClient(context)
-        val locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                currentLocation = result.lastLocation
-            }
-        }
-        if (LocationUtils.hasLocationPermission(context)) {
-            val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L).build()
-            fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
-        }
+        startTracking()
 
         onDispose {
             sensorManager.unregisterListener(sensorListener)
@@ -102,6 +123,14 @@ fun LocateScreen(spot: ParkingSpot, onBack: () -> Unit) {
     val distanceMeters = currentLocation?.let {
         LocationUtils.distanceMeters(it.latitude, it.longitude, spot.lat, spot.lng)
     }
+
+    LaunchedEffect(distanceMeters) {
+        if (isTracking && distanceMeters != null && distanceMeters <= ARRIVAL_THRESHOLD_METERS) {
+            stopTracking()
+        }
+    }
+
+    val arrived = !isTracking && distanceMeters != null && distanceMeters <= ARRIVAL_THRESHOLD_METERS
 
     val bearingToTarget = currentLocation?.let { loc ->
         val from = Location("from").apply { latitude = loc.latitude; longitude = loc.longitude }
@@ -148,7 +177,17 @@ fun LocateScreen(spot: ParkingSpot, onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        if (distanceMeters != null) {
+        if (arrived) {
+            Text("You're right here", style = MaterialTheme.typography.headlineSmall, color = Success)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                "GPS tracking paused to save battery — tap below if you're not actually there yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            TactileButton(text = "Keep tracking", variant = ButtonVariant.Secondary, onClick = { startTracking() })
+        } else if (distanceMeters != null) {
             val distanceText = if (distanceMeters >= 1000f) {
                 "%.1f km".format(distanceMeters / 1000f)
             } else {

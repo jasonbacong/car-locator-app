@@ -2,12 +2,12 @@ package com.jasongrech.carlocator
 
 import android.Manifest
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -31,6 +30,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +45,9 @@ import androidx.core.content.ContextCompat
 import com.jasongrech.carlocator.data.ParkingSpot
 import com.jasongrech.carlocator.service.ParkingSaveService
 import com.jasongrech.carlocator.ui.components.ButtonVariant
+import com.jasongrech.carlocator.ui.components.CarDevicesCard
+import com.jasongrech.carlocator.ui.components.CollapsibleSection
+import com.jasongrech.carlocator.ui.components.OnboardingDialog
 import com.jasongrech.carlocator.ui.components.ParkingBadge
 import com.jasongrech.carlocator.ui.components.ParkingSpotRow
 import com.jasongrech.carlocator.ui.components.SafeZonesCard
@@ -62,6 +65,7 @@ import com.jasongrech.carlocator.ui.theme.SurfaceRaised
 import com.jasongrech.carlocator.ui.theme.TextMuted
 import com.jasongrech.carlocator.ui.theme.TextPrimary
 import com.jasongrech.carlocator.ui.theme.TextSecondary
+import com.jasongrech.carlocator.util.BluetoothUtils
 import com.jasongrech.carlocator.util.LocationUtils
 import com.jasongrech.carlocator.util.ReminderScheduler
 import com.jasongrech.carlocator.widget.WidgetUpdater
@@ -125,18 +129,18 @@ fun CarLocatorScreen(app: CarLocatorApp) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val carDeviceName by app.prefs.carDeviceName.collectAsState(initial = null)
-    val carDeviceAddress by app.prefs.carDeviceAddress.collectAsState(initial = null)
+    val carDevices by app.db.carDeviceDao().getAll().collectAsState(initial = emptyList())
     val home by app.prefs.homeLocation.collectAsState(initial = null)
     val radius by app.prefs.homeRadiusMeters.collectAsState(initial = 150f)
     val enabled by app.prefs.featureEnabled.collectAsState(initial = true)
     val spots by app.db.parkingSpotDao().getAll().collectAsState(initial = emptyList())
     val safeZones by app.db.safeZoneDao().getAll().collectAsState(initial = emptyList())
+    val hasSeenOnboarding by app.prefs.hasSeenOnboarding.collectAsState(initial = true)
 
-    var showDevicePicker by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var permissionTick by remember { mutableStateOf(0) }
     var locateTarget by remember { mutableStateOf<ParkingSpot?>(null) }
+    var showOnboarding by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -150,10 +154,42 @@ fun CarLocatorScreen(app: CarLocatorApp) {
     val backgroundLocationGranted = permissionTick.let { hasBackgroundLocation(context) }
     val allReady = corePermissionsGranted && backgroundLocationGranted
 
+    // First launch: walk people through what the app does and why, before they
+    // start tapping permission prompts blind. Reopenable later from Status.
+    LaunchedEffect(hasSeenOnboarding) {
+        if (!hasSeenOnboarding) showOnboarding = true
+    }
+
+    // A nudge, not a nag: only checked right after app open or a permission
+    // flow, since the whole trigger depends on Bluetooth actually being on.
+    LaunchedEffect(permissionTick) {
+        if (corePermissionsGranted && !BluetoothUtils.isBluetoothEnabled(context)) {
+            Toast.makeText(
+                context,
+                "Friendly tip: Bluetooth's off, so Car Locator can't notice your car disconnecting. Worth turning it back on.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     val currentLocateTarget = locateTarget
     if (currentLocateTarget != null) {
         LocateScreen(spot = currentLocateTarget, onBack = { locateTarget = null })
         return
+    }
+
+    // Collapsed-state summaries — settings that are usually set once stay out of the
+    // way after that, without hiding whether they're actually configured.
+    val carDevicesSummary = if (carDevices.isEmpty()) {
+        "none added"
+    } else {
+        "${carDevices.size} car${if (carDevices.size == 1) "" else "s"}"
+    }
+    val homeSummary = if (home == null) "not set" else "${radius.toInt()} m radius"
+    val safeZonesSummary = if (safeZones.isEmpty()) {
+        "none"
+    } else {
+        "${safeZones.size} zone${if (safeZones.size == 1) "" else "s"}"
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Bg)) {
@@ -179,8 +215,11 @@ fun CarLocatorScreen(app: CarLocatorApp) {
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionEyebrow("Status")
+                CollapsibleSection(
+                    title = "Status",
+                    summary = if (allReady) "All set" else null,
+                    initiallyExpanded = !allReady
+                ) {
                     SectionCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             StatusDot(ready = allReady)
@@ -216,13 +255,22 @@ fun CarLocatorScreen(app: CarLocatorApp) {
                                 fullWidth = true
                             )
                         }
+                        TactileButton(
+                            text = "How this works",
+                            onClick = { showOnboarding = true },
+                            variant = ButtonVariant.Secondary,
+                            fullWidth = true
+                        )
                     }
                 }
             }
 
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionEyebrow("Parking detection")
+                CollapsibleSection(
+                    title = "Parking detection",
+                    summary = if (enabled) "On" else "Off",
+                    initiallyExpanded = true
+                ) {
                     SectionCard {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -244,23 +292,40 @@ fun CarLocatorScreen(app: CarLocatorApp) {
                             )
                         }
                         Text(
-                            "Car device: ${carDeviceName ?: "not set"}",
+                            "Disconnecting from any car below can trigger a save.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
-                        )
-                        TactileButton(
-                            text = if (carDeviceAddress == null) "Select car device" else "Change car device",
-                            onClick = { showDevicePicker = true },
-                            variant = ButtonVariant.Secondary,
-                            fullWidth = true
                         )
                     }
                 }
             }
 
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionEyebrow("Home zone")
+                CollapsibleSection(
+                    title = "Car devices",
+                    summary = carDevicesSummary,
+                    initiallyExpanded = carDevices.isEmpty()
+                ) {
+                    CarDevicesCard(
+                        devices = carDevices,
+                        onAdd = { address, name ->
+                            scope.launch {
+                                app.db.carDeviceDao().insert(
+                                    com.jasongrech.carlocator.data.CarDevice(address = address, name = name)
+                                )
+                            }
+                        },
+                        onDelete = { id -> scope.launch { app.db.carDeviceDao().delete(id) } }
+                    )
+                }
+            }
+
+            item {
+                CollapsibleSection(
+                    title = "Home zone",
+                    summary = homeSummary,
+                    initiallyExpanded = home == null
+                ) {
                     SectionCard {
                         Text(
                             home?.let { "%.5f, %.5f".format(it.lat, it.lng) } ?: "not set",
@@ -303,8 +368,11 @@ fun CarLocatorScreen(app: CarLocatorApp) {
             }
 
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionEyebrow("Other safe zones")
+                CollapsibleSection(
+                    title = "Other safe zones",
+                    summary = safeZonesSummary,
+                    initiallyExpanded = false
+                ) {
                     SafeZonesCard(
                         zones = safeZones,
                         onAdd = { name, lat, lng, zoneRadius ->
@@ -322,8 +390,7 @@ fun CarLocatorScreen(app: CarLocatorApp) {
             }
 
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionEyebrow("Test")
+                CollapsibleSection(title = "Test", initiallyExpanded = false) {
                     SectionCard {
                         TactileButton(
                             text = "Save current location now",
@@ -398,59 +465,12 @@ fun CarLocatorScreen(app: CarLocatorApp) {
         }
     }
 
-    if (showDevicePicker) {
-        DevicePickerDialog(
-            onDismiss = { showDevicePicker = false },
-            onSelected = { device ->
-                scope.launch { app.prefs.setCarDevice(device.address, deviceNameSafe(context, device)) }
-                showDevicePicker = false
+    if (showOnboarding) {
+        OnboardingDialog(
+            onDismiss = {
+                showOnboarding = false
+                scope.launch { app.prefs.setHasSeenOnboarding(true) }
             }
         )
     }
-}
-
-@Composable
-fun DevicePickerDialog(onDismiss: () -> Unit, onSelected: (BluetoothDevice) -> Unit) {
-    val context = LocalContext.current
-    val devices = remember {
-        try {
-            val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                Manifest.permission.BLUETOOTH_CONNECT else Manifest.permission.BLUETOOTH
-            if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
-                val manager = context.getSystemService(BluetoothManager::class.java)
-                manager?.adapter?.bondedDevices?.toList() ?: emptyList()
-            } else {
-                emptyList()
-            }
-        } catch (e: SecurityException) {
-            emptyList()
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select car Bluetooth device", color = TextPrimary) },
-        text = {
-            if (devices.isEmpty()) {
-                Text(
-                    "No paired devices found, or Bluetooth permission isn't granted yet.",
-                    color = TextSecondary
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    devices.forEach { device ->
-                        TactileButton(
-                            text = deviceNameSafe(context, device),
-                            onClick = { onSelected(device) },
-                            variant = ButtonVariant.Secondary,
-                            fullWidth = true
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TactileButton(text = "Cancel", onClick = onDismiss, variant = ButtonVariant.Secondary)
-        }
-    )
 }
