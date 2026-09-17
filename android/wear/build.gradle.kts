@@ -9,7 +9,10 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.jasongrech.carlocator.wear"
+        // Must match the phone app's applicationId: the Data Layer API only
+        // delivers DataItems between apps that share both package name and
+        // signing certificate — a different id here silently fails delivery.
+        applicationId = "com.jasongrech.carlocator"
         minSdk = 30
         targetSdk = 34
         versionCode = 1
