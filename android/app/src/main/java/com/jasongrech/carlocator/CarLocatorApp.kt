@@ -4,6 +4,7 @@ import android.app.Application
 import com.jasongrech.carlocator.data.AppDatabase
 import com.jasongrech.carlocator.data.CarDevice
 import com.jasongrech.carlocator.data.PrefsRepository
+import com.jasongrech.carlocator.util.WearSyncer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -16,6 +17,9 @@ class CarLocatorApp : Application() {
     override fun onCreate() {
         super.onCreate()
         migrateLegacyCarDevice()
+        // A watch paired after the last save, or one that was out of range for it,
+        // still needs to see the current spot the next time the phone app runs.
+        CoroutineScope(Dispatchers.IO).launch { WearSyncer.pushLatest(this@CarLocatorApp) }
     }
 
     /**

@@ -68,6 +68,7 @@ import com.jasongrech.carlocator.ui.theme.TextSecondary
 import com.jasongrech.carlocator.util.BluetoothUtils
 import com.jasongrech.carlocator.util.LocationUtils
 import com.jasongrech.carlocator.util.ReminderScheduler
+import com.jasongrech.carlocator.util.WearSyncer
 import com.jasongrech.carlocator.widget.WidgetUpdater
 import kotlinx.coroutines.launch
 
@@ -449,6 +450,7 @@ fun CarLocatorScreen(app: CarLocatorApp) {
                             scope.launch {
                                 app.db.parkingSpotDao().delete(spot.id)
                                 WidgetUpdater.updateAll(context)
+                                WearSyncer.pushLatest(context)
                             }
                         },
                         onLocate = { locateTarget = spot },

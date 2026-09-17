@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.jasongrech.carlocator.CarLocatorApp
+import com.jasongrech.carlocator.util.WearSyncer
 import com.jasongrech.carlocator.widget.WidgetUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ class UndoSaveReceiver : BroadcastReceiver() {
             try {
                 app.db.parkingSpotDao().delete(spotId)
                 WidgetUpdater.updateAll(context)
+                WearSyncer.pushLatest(context)
             } finally {
                 pendingResult.finish()
             }

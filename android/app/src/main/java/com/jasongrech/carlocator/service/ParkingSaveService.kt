@@ -9,6 +9,7 @@ import com.jasongrech.carlocator.CarLocatorApp
 import com.jasongrech.carlocator.data.ParkingSpot
 import com.jasongrech.carlocator.util.LocationUtils
 import com.jasongrech.carlocator.util.NotificationHelper
+import com.jasongrech.carlocator.util.WearSyncer
 import com.jasongrech.carlocator.widget.WidgetUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +88,7 @@ class ParkingSaveService : Service() {
         val id = app.db.parkingSpotDao().insert(spot)
         NotificationHelper.showSavedNotification(this, spot.copy(id = id))
         WidgetUpdater.updateAll(this)
+        WearSyncer.push(this, spot.copy(id = id))
 
         val cutoff = System.currentTimeMillis() - HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000
         app.db.parkingSpotDao().deleteOlderThan(cutoff)

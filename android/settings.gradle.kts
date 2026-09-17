@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "CarLocator"
 include(":app")
+include(":wear")
