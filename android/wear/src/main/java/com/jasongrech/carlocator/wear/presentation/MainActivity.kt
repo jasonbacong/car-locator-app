@@ -9,22 +9,29 @@ import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.ButtonDefaults
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.TimeText
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
@@ -112,32 +119,61 @@ class MainActivity : ComponentActivity(), DataClient.OnDataChangedListener {
     }
 }
 
+/** Amber accent lifted from the phone app's theme, so the watch reads as the same product. */
+private val Accent = androidx.compose.ui.graphics.Color(0xFFFF9F1C)
+private val AccentTint = androidx.compose.ui.graphics.Color(0xFF2A2313)
+
 @Composable
 fun WearApp(spot: SyncedSpot?, onOpenMaps: (SyncedSpot) -> Unit) {
     MaterialTheme {
-        Box(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
+        Scaffold(timeText = { TimeText() }) {
             if (spot == null) {
-                Text(
-                    text = "No parking spot saved yet",
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.body2
-                )
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "No parking spot saved yet",
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.body2,
+                        color = MaterialTheme.colors.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 28.dp)
+                    )
+                }
             } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 18.dp)
+                        .padding(top = 26.dp, bottom = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(AccentTint),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("P", color = Accent, fontWeight = FontWeight.Black, style = MaterialTheme.typography.title3)
+                    }
                     Text(
                         text = spot.address ?: "%.5f, %.5f".format(spot.lat, spot.lng),
                         textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.title3
+                        style = MaterialTheme.typography.title3,
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = timeAgo(spot.timestamp), style = MaterialTheme.typography.caption1)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(onClick = { onOpenMaps(spot) }, colors = ButtonDefaults.primaryButtonColors()) {
-                        Text("Navigate")
-                    }
+                    Text(
+                        text = timeAgo(spot.timestamp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.caption1,
+                        color = MaterialTheme.colors.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 18.dp)
+                    )
+                    Chip(
+                        onClick = { onOpenMaps(spot) },
+                        label = { Text("Navigate") },
+                        colors = ChipDefaults.primaryChipColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
